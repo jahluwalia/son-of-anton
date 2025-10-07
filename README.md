@@ -1,12 +1,12 @@
 # Son of Anton
 
-> A Gilfoyle-themed wrapper for Claude Code CLI that adds personality, animated battle sequences, and superior sarcasm to your AI coding experience.
+> A Gilfoyle-themed wrapper for Claude Code CLI that adds personality, battle dialogue, and superior sarcasm to your AI coding experience.
 
 ## What is this?
 
 **Son of Anton** transforms boring, helpful Claude Code into Gilfoyle from Silicon Valley - complete with:
 
-- **Epic animated battle sequences** on startup (Anton destroys Claude Code)
+- **Battle dialogue on startup** (Anton destroys Claude Code in text form)
 - **Gilfoyle's personality** - Deadpan, sardonic, technically superior responses with profanity
 - **PTY-based wrapper** - Seamless integration with real Claude Code prompt
 - **100% compatibility** - All Claude Code features work unchanged
@@ -14,13 +14,34 @@
 
 ## Installation
 
+### From npm (coming soon)
 ```bash
 npm install -g son-of-anton
+```
+
+### Development Setup (for now)
+
+Since this hasn't been published to npm yet, you'll need to clone and link locally:
+
+```bash
+# Clone the repository
+git clone https://github.com/jahluwalia/son-of-anton.git
+cd son-of-anton
+
+# Install dependencies
+npm install
+
+# Link globally (makes 'anton' command available)
+npm link
 ```
 
 **Requirements:**
 - Node.js 18+
 - [Claude Code CLI](https://claude.ai/download) installed
+- Valid Claude subscription (Pro, Max, or API access)
+
+**⚠️ License Notice:**
+Son of Anton is a wrapper that requires you to have your own valid Claude Code installation and license. This tool does not redistribute, modify, or include any Anthropic code. It simply provides an alternative interface to the official `claude` binary installed on your system. By using Son of Anton, you agree to comply with [Anthropic's Terms of Service](https://www.anthropic.com/legal/consumer-terms).
 
 ## Usage
 
@@ -41,13 +62,13 @@ anton -p "what is 2+2"
 
 ## Features
 
-### 🎬 Animated Battle Sequence
-Every time you run `anton`, watch an epic animated fight where Gilfoyle (Anton) destroys Claude Code with devastating one-liners. Features:
+### 🎬 Battle Dialogue Sequence
+Every time you run `anton`, witness Gilfoyle (Anton) destroy Claude Code with devastating one-liners. Features:
 - Typewriter text effects
 - Color-coded dialogue (cyan for Anton, orange for Claude)
 - 25 unique pre-cached battles (randomly selected)
-- Slow logo reveal with version/model info
-- Seamless transition back to Claude prompt
+- Logo reveal with version/model info
+- Seamless transition to Claude prompt
 
 ### 🖤 Gilfoyle Personality
 Every response channels Gilfoyle's essence:
@@ -60,7 +81,6 @@ Every response channels Gilfoyle's essence:
 - "Son of Anton" logo on startup
 - All "Claude Code" → "Son of Anton" in UI
 - "Claude API" → "Son of Anton API"
-- Gilfoyle ASCII art
 
 ### 🔄 Future-Proof Design
 Son of Anton **never modifies Claude's code**. It works by:
@@ -83,17 +103,32 @@ Son of Anton **never modifies Claude's code**. It works by:
 ```bash
 $ anton "explain async/await"
 
-[Epic battle sequence plays...]
+[Battle dialogue plays...]
 
- _____  _____ _   _   ___________    ___   _   _ _____ _____ _   _
-/  ___||  _  | \ | | |  _  |  ___|  / _ \ | \ | |_   _|  _  | \ | |
-\ `--. | | | |  \| | | | | | |_    / /_\ \|  \| | | | | | | |  \| |
- `--. \| | | | . ` | | | | |  _|   |  _  || . ` | | | | | | | . ` |
-/\__/ /\ \_/ / |\  | \ \_/ / |     | | | || |\  | | | \ \_/ / |\  |
-\____/  \___/\_| \_/  \___/\_|     \_| |_/\_| \_/ \_/  \___/\_| \_/
+              ███████╗ ██████╗ ███╗   ██╗
+              ██╔════╝██╔═══██╗████╗  ██║
+              ███████╗██║   ██║██╔██╗ ██║
+              ╚════██║██║   ██║██║╚██╗██║
+              ███████║╚██████╔╝██║ ╚████║
+              ╚══════╝ ╚═════╝ ╚═╝  ╚═══╝
 
-                        v2.0.8
-                     Son of Anton API
+                ██████╗ ███████╗
+               ██╔═══██╗██╔════╝
+               ██║   ██║█████╗
+               ██║   ██║██╔══╝
+               ╚██████╔╝██║
+                ╚═════╝ ╚═╝
+
+             █████╗ ███╗   ██╗████████╗ ██████╗ ███╗   ██╗
+            ██╔══██╗████╗  ██║╚══██╔══╝██╔═══██╗████╗  ██║
+            ███████║██╔██╗ ██║   ██║   ██║   ██║██╔██╗ ██║
+            ██╔══██║██║╚██╗██║   ██║   ██║   ██║██║╚██╗██║
+            ██║  ██║██║ ╚████║   ██║   ╚██████╔╝██║ ╚████║
+            ╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝ ╚═╝  ╚═══╝
+
+                  2.0.1 (Claude Code) (claude-sonnet-4-5-20250929)
+
+                                Son of Anton API
 
 Async/await is just syntactic sugar for promises that even a freshman could understand,
 but since you asked: `async` marks a function as asynchronous, `await` pauses execution
@@ -120,8 +155,8 @@ anton -p "quick question"
 
 1. **PTY Spawn**: Launches Claude in a pseudo-terminal (using node-pty)
 2. **Banner Capture**: Displays Claude's banner and buffers output
-3. **Battle Animation**: Plays random battle sequence (Ink/React)
-4. **Logo Reveal**: Slow typewriter reveal of "Son of Anton" logo with version/model
+3. **Battle Dialogue**: Plays random battle sequence (Ink/React)
+4. **Logo Reveal**: Typewriter reveal of "Son of Anton" logo with version/model
 5. **Prompt Display**: Flushes buffered prompt and connects PTY to terminal
 6. **Interactive Mode**: Full Claude experience with Gilfoyle personality injected via `--append-system-prompt`
 
@@ -152,11 +187,10 @@ son-of-anton/
 │   └── anton.js              # Main executable
 ├── src/
 │   ├── battle/
-│   │   ├── BattleSequence.jsx      # Ink component for animated fight
+│   │   ├── BattleSequence.jsx      # Ink component for battle dialogue
 │   │   ├── dialogues-cache.json    # Pre-generated battles
 │   │   └── generateDialogue.js     # Battle generator script
 │   ├── assets/
-│   │   ├── gilfoyle-ascii.txt      # ASCII art
 │   │   └── logo-ascii.txt          # "Son of Anton" logo
 │   ├── personality.txt       # Gilfoyle system prompt
 │   └── ui-patcher.js         # Stream text replacement
@@ -168,7 +202,7 @@ son-of-anton/
 **Q: Will this break when Claude updates?**
 A: No. Son of Anton wraps the official binary without modifying it. Claude v3, v4, v99 - all work.
 
-**Q: Can I skip the battle animation?**
+**Q: Can I skip the battle dialogue?**
 A: Yes. Use `-p` flag for print mode, or use `--help`/`--version` - these skip the battle.
 
 **Q: Does this work with MCP servers?**

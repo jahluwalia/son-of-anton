@@ -242,15 +242,7 @@ function prepareLogoWithVersion() {
   // Load and format logo
   try {
     const logo = readFileSync(LOGO_FILE, 'utf-8');
-
-    // Calculate padding for 60 char box width
-    const boxWidth = 60;
-    const totalPadding = boxWidth - versionString.length;
-    const leftPad = Math.floor(totalPadding / 2);
-    const rightPad = totalPadding - leftPad;
-    const paddedVersion = ' '.repeat(leftPad) + versionString + ' '.repeat(rightPad);
-
-    return logo.replace('{VERSION}', paddedVersion);
+    return logo.replace('{VERSION}', versionString);
   } catch {
     return 'SON OF ANTON';
   }
