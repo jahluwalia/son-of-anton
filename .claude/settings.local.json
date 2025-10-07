@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude --version)",
+      "Bash(echo $CLAUDE_BIN)",
+      "Read(//Users/jas/.config/claude/local/**)",
+      "Bash(/Users/jas/.claude/local/claude --help)",
+      "Read(//Users/jas/.claude/local/**)",
+      "WebSearch",
+      "Bash(npm:*)",
+      "Bash(node:*)",
+      "Bash(for i in {1..25})",
+      "Bash(do)",
+      "Bash($CLAUDE_BIN -p \"You are Gilfoyle from Silicon Valley. Describe in 1-2 sardonic, deadpan sentences how you just destroyed Claude Code in a fight. Be dark, superior, and dismissive. Output only the struggle description, nothing else. Make it unique and varied.\")",
+      "Bash(done)",
+      "Bash(for i in {1..10})",
+      "Bash(cat:*)",
+      "Bash(sed:*)",
+      "WebFetch(domain:github.com)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

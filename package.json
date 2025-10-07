@@ -1,0 +1,44 @@
+{
+  "name": "son-of-anton",
+  "version": "1.0.0",
+  "description": "A Gilfoyle-themed wrapper around Claude Code CLI with animated battle sequences",
+  "type": "module",
+  "main": "bin/anton.js",
+  "bin": {
+    "anton": "./bin/anton.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "generate-battles": "node src/battle/generateDialogue.js",
+    "generate-art": "node src/utils/generateAnsiArt.js"
+  },
+  "keywords": [
+    "claude",
+    "cli",
+    "gilfoyle",
+    "silicon-valley",
+    "wrapper",
+    "tui",
+    "animated"
+  ],
+  "author": "Jas Ahluwalia",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jahluwalia/son-of-anton.git"
+  },
+  "dependencies": {
+    "asciify-image": "^0.1.7",
+    "chalk": "^5.3.0",
+    "chalk-animation": "^2.0.3",
+    "figlet": "^1.8.0",
+    "ink": "^5.0.1",
+    "node-pty": "^1.0.0",
+    "react": "^18.3.1",
+    "term-img": "^7.0.0",
+    "terminal-image": "^4.0.0"
+  }
+}
