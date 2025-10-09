@@ -14,15 +14,6 @@
 
 ## Installation
 
-### From npm (coming soon)
-```bash
-npm install -g son-of-anton
-```
-
-### Development Setup (for now)
-
-Since this hasn't been published to npm yet, you'll need to clone and link locally:
-
 ```bash
 # Clone the repository
 git clone https://github.com/jahluwalia/son-of-anton.git
@@ -37,11 +28,11 @@ npm link
 
 **Requirements:**
 - Node.js 18+
-- [Claude Code CLI](https://claude.ai/download) installed
+- [Claude Code CLI](https://claude.ai/download) installed and licensed
 - Valid Claude subscription (Pro, Max, or API access)
 
 **⚠️ License Notice:**
-Son of Anton is a wrapper that requires you to have your own valid Claude Code installation and license. This tool does not redistribute, modify, or include any Anthropic code. It simply provides an alternative interface to the official `claude` binary installed on your system. By using Son of Anton, you agree to comply with [Anthropic's Terms of Service](https://www.anthropic.com/legal/consumer-terms).
+Son of Anton is a wrapper that requires your own valid Claude Code installation. This tool does not redistribute or modify any Anthropic code - it simply wraps the official `claude` binary. By using Son of Anton, you agree to comply with [Anthropic's Terms of Service](https://www.anthropic.com/legal/consumer-terms).
 
 ## Usage
 
@@ -51,13 +42,13 @@ Replace `claude` with `anton` in any command:
 # Instead of: claude
 anton
 
-# Instead of: claude "write hello world in python"
-anton "write hello world in python"
-
 # All Claude flags work
-anton --resume
+anton --continue
+anton --resume abc-123
 anton --mcp-config ./mcp.json
-anton -p "what is 2+2"
+
+# Skip battle animation (still get Gilfoyle personality)
+anton --anton-skip-battle
 ```
 
 ## Features
@@ -136,19 +127,14 @@ until the promise resolves. Try not to nest them like an amateur - that's callba
 with better PR.
 ```
 
-### With Claude Flags
+### Skipping the Battle
 ```bash
-# Continue previous conversation
-anton --continue
+# Use --anton-skip-battle to skip battle animation (personality still active)
+anton --anton-skip-battle
 
-# Resume specific session
-anton --resume abc-123
-
-# Use different model
-anton --model opus
-
-# Print mode (no battle animation)
-anton -p "quick question"
+# --help and --version also skip the battle
+anton --help
+anton --version
 ```
 
 ## How It Works
@@ -165,18 +151,11 @@ See [Architecture Documentation](./docs/architecture.md) for detailed technical 
 ## Development
 
 ```bash
-# Clone repo
-git clone https://github.com/jahluwalia/son-of-anton.git
-cd son-of-anton
-
-# Install dependencies
-npm install
-
-# Link for local testing
-npm link
-
 # Generate more battle dialogues
 npm run generate-battles 10
+
+# Generate ANSI art
+npm run generate-art
 ```
 
 ## File Structure
@@ -203,7 +182,7 @@ son-of-anton/
 A: No. Son of Anton wraps the official binary without modifying it. Claude v3, v4, v99 - all work.
 
 **Q: Can I skip the battle dialogue?**
-A: Yes. Use `-p` flag for print mode, or use `--help`/`--version` - these skip the battle.
+A: Yes. Use `--anton-skip-battle` flag, or use `--help`/`--version` - these all skip the battle.
 
 **Q: Does this work with MCP servers?**
 A: Yes. All Claude flags (`--mcp-config`, `--resume`, `--model`, etc.) work unchanged.

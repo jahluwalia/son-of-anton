@@ -153,8 +153,9 @@ function spawnClaudeInPTY(args) {
     // Load personality
     const personality = readFileSync(PERSONALITY_FILE, 'utf-8');
 
-    // Build args with personality injection
-    const claudeArgs = [...args, '--append-system-prompt', personality];
+    // Always inject personality, even for --continue sessions
+    // Put the personality flags BEFORE other args to ensure they're processed first
+    const claudeArgs = ['--append-system-prompt', personality, ...args];
 
     // Spawn Claude in a PTY
     const ptyProcess = pty.spawn(CLAUDE_BIN, claudeArgs, {
@@ -216,28 +217,31 @@ function connectPTYToTerminal(ptyProcess) {
 function prepareLogoWithVersion() {
   const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 
-  // Get version
-  let version = 'Unknown';
+  // Get Claude version
+  let claudeVersion = 'Unknown';
   try {
-    const versionResult = spawn.sync(CLAUDE_BIN, ['--version'], { encoding: 'utf-8' });
-    version = (versionResult.stdout || versionResult.stderr || '').trim();
-  } catch (err) {
-    // Use default
-  }
-
-  // Get model
-  let model = 'Unknown Model';
-  try {
-    const modelResult = spawn.sync(CLAUDE_BIN, ['-p', 'output only your exact model ID, nothing else'], {
+    const versionResult = spawn.sync(CLAUDE_BIN, ['--version'], {
       encoding: 'utf-8',
-      timeout: 5000
+      timeout: 3000
     });
-    model = (modelResult.stdout || '').trim();
+    const output = (versionResult.stdout || versionResult.stderr || '').trim();
+    if (output) {
+      claudeVersion = output;
+    }
   } catch (err) {
     // Use default
   }
 
-  const versionString = `${version} (${model})`;
+  // Get Son of Anton version from package.json
+  let antonVersion = '1.0.0';
+  try {
+    const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+    antonVersion = packageJson.version;
+  } catch (err) {
+    // Use default
+  }
+
+  const versionString = `Son of Anton v${antonVersion} | ${claudeVersion}`;
 
   // Load and format logo
   try {
@@ -270,6 +274,15 @@ async function main() {
     return;
   }
 
+  // Handle --anton-skip-battle flag (skip battle, still apply personality)
+  if (args.includes('--anton-skip-battle')) {
+    // Remove our custom flag before passing to Claude
+    const claudeArgs = args.filter(arg => arg !== '--anton-skip-battle');
+    const ptyProcess = spawnClaudeInPTY(claudeArgs);
+    connectPTYToTerminal(ptyProcess);
+    return;
+  }
+
   // Normal flow with PTY:
   // 1. Spawn Claude in PTY
   const ptyProcess = spawnClaudeInPTY(args);
@@ -289,28 +302,33 @@ async function main() {
     }
   });
 
-  // Wait for banner and prompt
+  // Wait for banner and prompt - give it more time to fully display
   const showBannerUntilPrompt = new Promise((resolve) => {
+    let lastOutputLength = 0;
+    let stableCount = 0;
+
     const checkPrompt = () => {
-      // Check for Claude's prompt indicators
-      if (
-        outputBuffer.includes('> ') ||
-        outputBuffer.includes('➜') ||
-        outputBuffer.match(/\n\s*>\s*$/) ||
-        outputBuffer.match(/\n.*?:\s*$/)
-      ) {
-        resolve();
+      // Check if output has stabilized (no new data for a bit)
+      if (outputBuffer.length === lastOutputLength) {
+        stableCount++;
+        // If stable for 3 checks (300ms) and we have some output, consider it done
+        if (stableCount >= 3 && outputBuffer.length > 0) {
+          resolve();
+        }
+      } else {
+        stableCount = 0;
+        lastOutputLength = outputBuffer.length;
       }
     };
 
     // Check periodically
     const interval = setInterval(checkPrompt, 100);
 
-    // Fallback timeout
+    // Fallback timeout (increased to 5s to give more time for banner)
     setTimeout(() => {
       clearInterval(interval);
       resolve();
-    }, 3000);
+    }, 5000);
   });
 
   await showBannerUntilPrompt;
