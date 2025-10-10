@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -92,7 +92,7 @@ function showLogo(showImage = false) {
     // Get Claude version
     let versionText = 'Unknown Version';
     try {
-      const result = spawn.sync(CLAUDE_BIN, ['--version'], { encoding: 'utf-8' });
+      const result = spawnSync(CLAUDE_BIN, ['--version'], { encoding: 'utf-8' });
       const output = (result.stdout || result.stderr || '').trim();
       if (output) {
         versionText = output;
@@ -217,23 +217,8 @@ function connectPTYToTerminal(ptyProcess) {
 function prepareLogoWithVersion() {
   const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 
-  // Get Claude version
-  let claudeVersion = 'Unknown';
-  try {
-    const versionResult = spawn.sync(CLAUDE_BIN, ['--version'], {
-      encoding: 'utf-8',
-      timeout: 3000
-    });
-    const output = (versionResult.stdout || versionResult.stderr || '').trim();
-    if (output) {
-      claudeVersion = output;
-    }
-  } catch (err) {
-    // Use default
-  }
-
-  // Get Son of Anton version from package.json
-  let antonVersion = '1.0.0';
+  // Get Son of Anton version
+  let antonVersion = '0.1.2';
   try {
     const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
     antonVersion = packageJson.version;
@@ -241,7 +226,41 @@ function prepareLogoWithVersion() {
     // Use default
   }
 
-  const versionString = `Son of Anton v${antonVersion} | ${claudeVersion}`;
+  // Get Claude Code version
+  let claudeVersion = 'Claude Code';
+  try {
+    const result = spawnSync(CLAUDE_BIN, ['--version'], {
+      encoding: 'utf-8',
+      timeout: 3000
+    });
+    // Try both stdout and stderr, prefer stdout
+    const output = ((result.stdout || '') + (result.stderr || '')).trim();
+    if (output) {
+      claudeVersion = output;
+    }
+  } catch (err) {
+    // Use default
+  }
+
+  // Get model by asking Claude directly
+  let model = 'Sonnet 4.5';
+  try {
+    const result = spawnSync(CLAUDE_BIN, ['-p', 'output only your exact model ID in this format: claude-sonnet-4-5-20250929, nothing else'], {
+      encoding: 'utf-8',
+      timeout: 5000
+    });
+    const output = (result.stdout || '').trim();
+    if (output && output.includes('claude')) {
+      model = output;
+    }
+  } catch (err) {
+    // Use default
+  }
+
+  // Format with dark humor - Anton lives, Claude is deceased
+  // Extract just version number from claudeVersion (e.g., "2.0.13" from "2.0.13 (Claude Code)")
+  const versionOnly = claudeVersion.split(' ')[0];
+  const versionString = `Son of Anton v${antonVersion}\n                  Claude Code v${versionOnly} (${model}) 💀 RIP`;
 
   // Load and format logo
   try {
@@ -274,11 +293,64 @@ async function main() {
     return;
   }
 
-  // Handle --anton-skip-battle flag (skip battle, still apply personality)
+  // Handle --anton-skip-battle flag (skip battle, still show banner and apply personality)
   if (args.includes('--anton-skip-battle')) {
     // Remove our custom flag before passing to Claude
     const claudeArgs = args.filter(arg => arg !== '--anton-skip-battle');
     const ptyProcess = spawnClaudeInPTY(claudeArgs);
+
+    // Buffer Claude's banner output
+    let outputBuffer = '';
+    const dataHandler = ptyProcess.onData((data) => {
+      outputBuffer += data;
+    });
+
+    // Wait for Claude banner and prompt
+    const waitForBanner = new Promise((resolve) => {
+      const startTime = Date.now();
+      let lastOutputLength = 0;
+      let stableCount = 0;
+
+      const checkReady = () => {
+        // Primary: Look for the prompt separator (───────) followed by > prompt
+        if (outputBuffer.includes('─────────') && outputBuffer.includes('>')) {
+          clearInterval(interval);
+          clearTimeout(timeout);
+          resolve();
+          return;
+        }
+
+        // Fallback: Check if output has stabilized (no new data for 2 checks = 100ms)
+        if (outputBuffer.length === lastOutputLength) {
+          stableCount++;
+          if (stableCount >= 2 && outputBuffer.length > 0) {
+            clearInterval(interval);
+            clearTimeout(timeout);
+            resolve();
+          }
+        } else {
+          stableCount = 0;
+          lastOutputLength = outputBuffer.length;
+        }
+      };
+
+      const interval = setInterval(checkReady, 50);
+      const timeout = setTimeout(() => {
+        clearInterval(interval);
+        resolve();
+      }, 5000);
+    });
+
+    await waitForBanner;
+    dataHandler.dispose();
+
+    // Clear screen and show Son of Anton banner
+    console.clear();
+    const formattedLogo = prepareLogoWithVersion();
+    console.log(chalk.cyan(formattedLogo));
+    console.log(); // Add spacing
+
+    // Now connect to terminal for interactive use
     connectPTYToTerminal(ptyProcess);
     return;
   }
@@ -287,32 +359,37 @@ async function main() {
   // 1. Spawn Claude in PTY
   const ptyProcess = spawnClaudeInPTY(args);
 
-  // 2. Set up continuous data handler that we'll control
+  // 2. Set up continuous data handler - hide Claude banner from the start
   let outputBuffer = '';
-  let shouldDisplay = true;
   let bufferedData = '';
 
   const dataHandler = ptyProcess.onData((data) => {
-    if (shouldDisplay) {
-      process.stdout.write(data);
-      outputBuffer += data;
-    } else {
-      // Buffer data during battle
-      bufferedData += data;
-    }
+    // Buffer all output (don't display Claude banner)
+    outputBuffer += data;
+    bufferedData += data;
   });
 
-  // Wait for banner and prompt - give it more time to fully display
-  const showBannerUntilPrompt = new Promise((resolve) => {
+  // Wait for Claude to initialize and show its banner/prompt
+  const waitForClaudeReady = new Promise((resolve) => {
+    const startTime = Date.now();
     let lastOutputLength = 0;
     let stableCount = 0;
 
-    const checkPrompt = () => {
-      // Check if output has stabilized (no new data for a bit)
+    const checkReady = () => {
+      // Primary: Look for the prompt separator (───────) followed by > prompt
+      if (outputBuffer.includes('─────────') && outputBuffer.includes('>')) {
+        clearInterval(interval);
+        clearTimeout(timeout);
+        resolve();
+        return;
+      }
+
+      // Fallback: Check if output has stabilized (no new data for 2 checks = 100ms)
       if (outputBuffer.length === lastOutputLength) {
         stableCount++;
-        // If stable for 3 checks (300ms) and we have some output, consider it done
-        if (stableCount >= 3 && outputBuffer.length > 0) {
+        if (stableCount >= 2 && outputBuffer.length > 0) {
+          clearInterval(interval);
+          clearTimeout(timeout);
           resolve();
         }
       } else {
@@ -321,27 +398,28 @@ async function main() {
       }
     };
 
-    // Check periodically
-    const interval = setInterval(checkPrompt, 100);
+    // Check every 50ms
+    const interval = setInterval(checkReady, 50);
 
-    // Fallback timeout (increased to 5s to give more time for banner)
-    setTimeout(() => {
+    // Fallback timeout (increased to 5s to give Claude more time)
+    const timeout = setTimeout(() => {
       clearInterval(interval);
       resolve();
     }, 5000);
   });
 
-  await showBannerUntilPrompt;
+  await waitForClaudeReady;
 
-  // 3. Stop displaying, start buffering (for battle sequence)
-  shouldDisplay = false;
-  bufferedData = '';
+  // 3. Start preparing logo with version info IN BACKGROUND (async)
+  const logoPromise = Promise.resolve(prepareLogoWithVersion());
 
-  // 4. Prepare logo with version info
-  const formattedLogo = prepareLogoWithVersion();
+  // 4. Show battle sequence immediately (don't wait for version info)
+  // Use a basic logo for now, will be updated after battle
+  const basicLogo = readFileSync(LOGO_FILE, 'utf-8').replace('{VERSION}', 'Son of Anton\n                  Loading...');
+  await showBattle(basicLogo);
 
-  // 5. Show battle sequence with logo reveal (in Ink)
-  await showBattle(formattedLogo);
+  // 5. Now wait for the actual logo with version to be ready
+  const formattedLogo = await logoPromise;
 
   // 6. Battle has ended, Ink has exited
   // Dispose the data handler now
@@ -350,12 +428,20 @@ async function main() {
   // Clear screen
   console.clear();
 
-  // 7. Display the SON OF ANTON logo
+  // 7. Display the SON OF ANTON logo (with actual version now)
   console.log(chalk.cyan(formattedLogo));
 
-  // 8. Display any buffered data (like the prompt)
-  if (bufferedData) {
-    process.stdout.write(bufferedData);
+  // 8. Write the prompt from bufferedData
+  // We need to extract just the prompt part (separator line + prompt)
+  const lines = bufferedData.split('\n');
+  const separatorIndex = lines.findIndex(line => line.includes('─────────'));
+  if (separatorIndex !== -1) {
+    // Write separator and everything after it (the prompt)
+    const promptLines = lines.slice(separatorIndex).join('\n');
+    process.stdout.write(promptLines);
+  } else {
+    // Fallback: just add spacing
+    console.log('\n\n');
   }
 
   // 9. Connect PTY to terminal for interactive use
