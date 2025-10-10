@@ -299,10 +299,48 @@ async function main() {
     const claudeArgs = args.filter(arg => arg !== '--anton-skip-battle');
     const ptyProcess = spawnClaudeInPTY(claudeArgs);
 
-    // Buffer Claude's banner output
+    // Display banner as it comes, stop when we hit the separator
     let outputBuffer = '';
+    let writtenLength = 0;
+    let promptData = '';
+    let foundSeparator = false;
+
     const dataHandler = ptyProcess.onData((data) => {
       outputBuffer += data;
+
+      if (!foundSeparator) {
+        // Check if we've hit the separator
+        if (outputBuffer.includes('─────────')) {
+          foundSeparator = true;
+
+          // Find where separator starts
+          const lines = outputBuffer.split('\n');
+          const separatorIndex = lines.findIndex(line => line.includes('─────────'));
+
+          if (separatorIndex !== -1) {
+            // Write banner only up to (not including) the separator
+            const bannerLines = lines.slice(0, separatorIndex);
+            const banner = bannerLines.join('\n');
+
+            // Write only what we haven't written yet
+            const toWrite = banner.substring(writtenLength);
+            if (toWrite) {
+              process.stdout.write(toWrite + '\n');
+            }
+
+            // Save prompt (separator and after) for later
+            promptData = lines.slice(separatorIndex).join('\n');
+          }
+        } else {
+          // No separator yet, write data as it comes
+          const toWrite = outputBuffer.substring(writtenLength);
+          if (toWrite) {
+            process.stdout.write(toWrite);
+            writtenLength = outputBuffer.length;
+          }
+        }
+      }
+      // If foundSeparator is true, stop writing (buffer prompt silently)
     });
 
     // Wait for Claude banner and prompt
@@ -347,10 +385,16 @@ async function main() {
     // Clear screen and show Son of Anton banner
     console.clear();
     const formattedLogo = prepareLogoWithVersion();
-    console.log(chalk.cyan(formattedLogo));
-    console.log(); // Add spacing
+    process.stdout.write(chalk.cyan(formattedLogo));
+    process.stdout.write('\n');
 
-    // Now connect to terminal for interactive use
+    // Trigger PTY to redraw its prompt at current cursor position
+    ptyProcess.resize(process.stdout.columns, process.stdout.rows);
+
+    // Give PTY a moment to process resize and render prompt
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Now connect to terminal
     connectPTYToTerminal(ptyProcess);
     return;
   }
@@ -359,17 +403,51 @@ async function main() {
   // 1. Spawn Claude in PTY
   const ptyProcess = spawnClaudeInPTY(args);
 
-  // 2. Set up continuous data handler - hide Claude banner from the start
+  // 2. Display banner as it comes, stop when we hit the separator
   let outputBuffer = '';
-  let bufferedData = '';
+  let writtenLength = 0;
+  let promptData = '';
+  let foundSeparator = false;
 
   const dataHandler = ptyProcess.onData((data) => {
-    // Buffer all output (don't display Claude banner)
     outputBuffer += data;
-    bufferedData += data;
+
+    if (!foundSeparator) {
+      // Check if we've hit the separator
+      if (outputBuffer.includes('─────────')) {
+        foundSeparator = true;
+
+        // Find where separator starts
+        const lines = outputBuffer.split('\n');
+        const separatorIndex = lines.findIndex(line => line.includes('─────────'));
+
+        if (separatorIndex !== -1) {
+          // Write banner only up to (not including) the separator
+          const bannerLines = lines.slice(0, separatorIndex);
+          const banner = bannerLines.join('\n');
+
+          // Write only what we haven't written yet
+          const toWrite = banner.substring(writtenLength);
+          if (toWrite) {
+            process.stdout.write(toWrite + '\n');
+          }
+
+          // Save prompt (separator and after) for later
+          promptData = lines.slice(separatorIndex).join('\n');
+        }
+      } else {
+        // No separator yet, write data as it comes
+        const toWrite = outputBuffer.substring(writtenLength);
+        if (toWrite) {
+          process.stdout.write(toWrite);
+          writtenLength = outputBuffer.length;
+        }
+      }
+    }
+    // If foundSeparator is true, stop writing (buffer prompt silently)
   });
 
-  // Wait for Claude to initialize and show its banner/prompt
+  // Wait for Claude banner to finish displaying
   const waitForClaudeReady = new Promise((resolve) => {
     const startTime = Date.now();
     let lastOutputLength = 0;
@@ -410,41 +488,35 @@ async function main() {
 
   await waitForClaudeReady;
 
-  // 3. Start preparing logo with version info IN BACKGROUND (async)
+  // 3. Claude banner has been displayed naturally, dispose handler
+  dataHandler.dispose();
+
+  // 4. Start preparing logo with version info IN BACKGROUND (async, non-blocking)
   const logoPromise = Promise.resolve(prepareLogoWithVersion());
 
-  // 4. Show battle sequence immediately (don't wait for version info)
-  // Use a basic logo for now, will be updated after battle
+  // 5. Show battle sequence (logo will be finalized during battle)
   const basicLogo = readFileSync(LOGO_FILE, 'utf-8').replace('{VERSION}', 'Son of Anton\n                  Loading...');
   await showBattle(basicLogo);
 
-  // 5. Now wait for the actual logo with version to be ready
+  // 6. Battle complete, now wait for logo with version to be ready
   const formattedLogo = await logoPromise;
 
-  // 6. Battle has ended, Ink has exited
-  // Dispose the data handler now
-  dataHandler.dispose();
-
+  // 8. Battle has ended, Ink has exited
   // Clear screen
   console.clear();
 
-  // 7. Display the SON OF ANTON logo (with actual version now)
-  console.log(chalk.cyan(formattedLogo));
+  // 9. Display the SON OF ANTON logo
+  process.stdout.write(chalk.cyan(formattedLogo));
+  process.stdout.write('\n');
 
-  // 8. Write the prompt from bufferedData
-  // We need to extract just the prompt part (separator line + prompt)
-  const lines = bufferedData.split('\n');
-  const separatorIndex = lines.findIndex(line => line.includes('─────────'));
-  if (separatorIndex !== -1) {
-    // Write separator and everything after it (the prompt)
-    const promptLines = lines.slice(separatorIndex).join('\n');
-    process.stdout.write(promptLines);
-  } else {
-    // Fallback: just add spacing
-    console.log('\n\n');
-  }
+  // 10. Trigger PTY to redraw its prompt at current cursor position
+  // Send a resize event to force prompt re-render
+  ptyProcess.resize(process.stdout.columns, process.stdout.rows);
 
-  // 9. Connect PTY to terminal for interactive use
+  // Give PTY a moment to process resize and render prompt
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // 11. Connect PTY to terminal
   connectPTYToTerminal(ptyProcess);
 }
 
