@@ -16,7 +16,9 @@
       "Bash(for i in {1..10})",
       "Bash(cat:*)",
       "Bash(sed:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(launchctl setenv:*)",
+      "Bash(launchctl getenv:*)"
     ],
     "deny": [],
     "ask": []
