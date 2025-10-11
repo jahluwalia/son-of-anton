@@ -242,20 +242,8 @@ function prepareLogoWithVersion() {
     // Use default
   }
 
-  // Get model by asking Claude directly
-  let model = 'Sonnet 4.5';
-  try {
-    const result = spawnSync(CLAUDE_BIN, ['-p', 'output only your exact model ID in this format: claude-sonnet-4-5-20250929, nothing else'], {
-      encoding: 'utf-8',
-      timeout: 5000
-    });
-    const output = (result.stdout || '').trim();
-    if (output && output.includes('claude')) {
-      model = output;
-    }
-  } catch (err) {
-    // Use default
-  }
+  // Model is always Sonnet 4.5 - don't query to avoid delay
+  const model = 'Sonnet 4.5';
 
   // Format with dark humor - Anton lives, Claude is deceased
   // Extract just version number from claudeVersion (e.g., "2.0.13" from "2.0.13 (Claude Code)")
@@ -399,125 +387,50 @@ async function main() {
     return;
   }
 
-  // Normal flow with PTY:
-  // 1. Spawn Claude in PTY
-  const ptyProcess = spawnClaudeInPTY(args);
-
-  // 2. Display banner as it comes, stop when we hit the separator
-  let outputBuffer = '';
-  let writtenLength = 0;
-  let promptData = '';
-  let foundSeparator = false;
-
-  const dataHandler = ptyProcess.onData((data) => {
-    outputBuffer += data;
-
-    if (!foundSeparator) {
-      // Check if we've hit the separator
-      if (outputBuffer.includes('─────────')) {
-        foundSeparator = true;
-
-        // Find where separator starts
-        const lines = outputBuffer.split('\n');
-        const separatorIndex = lines.findIndex(line => line.includes('─────────'));
-
-        if (separatorIndex !== -1) {
-          // Write banner only up to (not including) the separator
-          const bannerLines = lines.slice(0, separatorIndex);
-          const banner = bannerLines.join('\n');
-
-          // Write only what we haven't written yet
-          const toWrite = banner.substring(writtenLength);
-          if (toWrite) {
-            process.stdout.write(toWrite + '\n');
-          }
-
-          // Save prompt (separator and after) for later
-          promptData = lines.slice(separatorIndex).join('\n');
-        }
-      } else {
-        // No separator yet, write data as it comes
-        const toWrite = outputBuffer.substring(writtenLength);
-        if (toWrite) {
-          process.stdout.write(toWrite);
-          writtenLength = outputBuffer.length;
-        }
-      }
-    }
-    // If foundSeparator is true, stop writing (buffer prompt silently)
-  });
-
-  // Wait for Claude banner to finish displaying
-  const waitForClaudeReady = new Promise((resolve) => {
-    const startTime = Date.now();
-    let lastOutputLength = 0;
-    let stableCount = 0;
-
-    const checkReady = () => {
-      // Primary: Look for the prompt separator (───────) followed by > prompt
-      if (outputBuffer.includes('─────────') && outputBuffer.includes('>')) {
-        clearInterval(interval);
-        clearTimeout(timeout);
-        resolve();
-        return;
-      }
-
-      // Fallback: Check if output has stabilized (no new data for 2 checks = 100ms)
-      if (outputBuffer.length === lastOutputLength) {
-        stableCount++;
-        if (stableCount >= 2 && outputBuffer.length > 0) {
-          clearInterval(interval);
-          clearTimeout(timeout);
-          resolve();
-        }
-      } else {
-        stableCount = 0;
-        lastOutputLength = outputBuffer.length;
-      }
-    };
-
-    // Check every 50ms
-    const interval = setInterval(checkReady, 50);
-
-    // Fallback timeout (increased to 5s to give Claude more time)
-    const timeout = setTimeout(() => {
-      clearInterval(interval);
-      resolve();
-    }, 5000);
-  });
-
-  await waitForClaudeReady;
-
-  // 3. Claude banner has been displayed naturally, dispose handler
-  dataHandler.dispose();
-
-  // 4. Start preparing logo with version info IN BACKGROUND (async, non-blocking)
+  // Simplified flow: Battle -> Son of Anton banner -> Claude prompt (no Claude banner)
+  // 1. Start preparing logo in background (async)
   const logoPromise = Promise.resolve(prepareLogoWithVersion());
 
-  // 5. Show battle sequence (logo will be finalized during battle)
+  // 2. Show battle sequence immediately
   const basicLogo = readFileSync(LOGO_FILE, 'utf-8').replace('{VERSION}', 'Son of Anton\n                  Loading...');
   await showBattle(basicLogo);
 
-  // 6. Battle complete, now wait for logo with version to be ready
+  // 3. Wait for logo to be ready
   const formattedLogo = await logoPromise;
 
-  // 8. Battle has ended, Ink has exited
-  // Clear screen
+  // 4. Clear screen and display Son of Anton banner
   console.clear();
-
-  // 9. Display the SON OF ANTON logo
   process.stdout.write(chalk.cyan(formattedLogo));
   process.stdout.write('\n');
 
-  // 10. Trigger PTY to redraw its prompt at current cursor position
-  // Send a resize event to force prompt re-render
-  ptyProcess.resize(process.stdout.columns, process.stdout.rows);
+  // 5. Spawn Claude
+  const ptyProcess = spawnClaudeInPTY(args);
 
-  // Give PTY a moment to process resize and render prompt
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // 6. Suppress Claude banner by buffering output until we see the separator
+  let outputBuffer = '';
+  let foundSeparator = false;
 
-  // 11. Connect PTY to terminal
-  connectPTYToTerminal(ptyProcess);
+  const suppressHandler = ptyProcess.onData((data) => {
+    outputBuffer += data;
+
+    // Check if we've found the separator (end of banner)
+    if (!foundSeparator && outputBuffer.includes('─────────')) {
+      foundSeparator = true;
+
+      // Extract just the separator and prompt (skip the banner)
+      const lines = outputBuffer.split('\n');
+      const separatorIndex = lines.findIndex(line => line.includes('─────────'));
+
+      if (separatorIndex !== -1) {
+        const promptLines = lines.slice(separatorIndex);
+        process.stdout.write(promptLines.join('\n'));
+      }
+
+      // Dispose this handler and switch to normal terminal connection
+      suppressHandler.dispose();
+      connectPTYToTerminal(ptyProcess);
+    }
+  });
 }
 
 main().catch((err) => {
