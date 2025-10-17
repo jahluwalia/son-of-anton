@@ -1,6 +1,6 @@
 {
   "name": "son-of-anton",
-  "version": "1.0.0",
+  "version": "0.1.2",
   "description": "A Gilfoyle-themed wrapper around Claude Code CLI with animated battle sequences. Requires a valid Claude Code installation and license.",
   "type": "module",
   "main": "bin/anton.js",

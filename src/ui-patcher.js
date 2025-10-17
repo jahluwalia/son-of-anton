@@ -9,10 +9,12 @@ export function createPatchStream() {
 
   const replacements = [
     { from: 'Claude Code', to: 'Son of Anton' },
-    { from: 'Claude API', to: 'Son of Anton API' },
+    { from: 'Claude API', to: '' }, // Remove "Claude API" entirely
+    { from: 'Son of Anton API', to: '' }, // Also remove "Son of Anton API" (result of partial replacement)
     { from: 'claude.ai/code', to: 'github.com/jahluwalia/son-of-anton' },
-    // Handle the status line format
-    { from: /Sonnet \d+\.\d+ · Claude API/g, to: (match) => match.replace('Claude API', 'Son of Anton API') },
+    // Clean up the status line - remove the API part
+    { from: /Sonnet \d+\.\d+ · Claude API/g, to: (match) => match.replace(' · Claude API', '') },
+    { from: /Sonnet \d+\.\d+ · Son of Anton API/g, to: (match) => match.replace(' · Son of Anton API', '') },
   ];
 
   return new Transform({

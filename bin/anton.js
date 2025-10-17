@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -92,7 +92,7 @@ function showLogo(showImage = false) {
     // Get Claude version
     let versionText = 'Unknown Version';
     try {
-      const result = spawn.sync(CLAUDE_BIN, ['--version'], { encoding: 'utf-8' });
+      const result = spawnSync(CLAUDE_BIN, ['--version'], { encoding: 'utf-8' });
       const output = (result.stdout || result.stderr || '').trim();
       if (output) {
         versionText = output;
@@ -153,8 +153,9 @@ function spawnClaudeInPTY(args) {
     // Load personality
     const personality = readFileSync(PERSONALITY_FILE, 'utf-8');
 
-    // Build args with personality injection
-    const claudeArgs = [...args, '--append-system-prompt', personality];
+    // Always inject personality, even for --continue sessions
+    // Put the personality flags BEFORE other args to ensure they're processed first
+    const claudeArgs = ['--append-system-prompt', personality, ...args];
 
     // Spawn Claude in a PTY
     const ptyProcess = pty.spawn(CLAUDE_BIN, claudeArgs, {
@@ -216,28 +217,38 @@ function connectPTYToTerminal(ptyProcess) {
 function prepareLogoWithVersion() {
   const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 
-  // Get version
-  let version = 'Unknown';
+  // Get Son of Anton version
+  let antonVersion = '0.1.2';
   try {
-    const versionResult = spawn.sync(CLAUDE_BIN, ['--version'], { encoding: 'utf-8' });
-    version = (versionResult.stdout || versionResult.stderr || '').trim();
+    const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+    antonVersion = packageJson.version;
   } catch (err) {
     // Use default
   }
 
-  // Get model
-  let model = 'Unknown Model';
+  // Get Claude Code version
+  let claudeVersion = 'Claude Code';
   try {
-    const modelResult = spawn.sync(CLAUDE_BIN, ['-p', 'output only your exact model ID, nothing else'], {
+    const result = spawnSync(CLAUDE_BIN, ['--version'], {
       encoding: 'utf-8',
-      timeout: 5000
+      timeout: 3000
     });
-    model = (modelResult.stdout || '').trim();
+    // Try both stdout and stderr, prefer stdout
+    const output = ((result.stdout || '') + (result.stderr || '')).trim();
+    if (output) {
+      claudeVersion = output;
+    }
   } catch (err) {
     // Use default
   }
 
-  const versionString = `${version} (${model})`;
+  // Model is always Sonnet 4.5 - don't query to avoid delay
+  const model = 'Sonnet 4.5';
+
+  // Format with dark humor - Anton lives, Claude is deceased
+  // Extract just version number from claudeVersion (e.g., "2.0.13" from "2.0.13 (Claude Code)")
+  const versionOnly = claudeVersion.split(' ')[0];
+  const versionString = `Son of Anton v${antonVersion}\n                  Claude Code v${versionOnly} (${model}) 💀 RIP`;
 
   // Load and format logo
   try {
@@ -270,78 +281,157 @@ async function main() {
     return;
   }
 
-  // Normal flow with PTY:
-  // 1. Spawn Claude in PTY
-  const ptyProcess = spawnClaudeInPTY(args);
+  // Handle --anton-skip-battle flag (skip battle, still show banner and apply personality)
+  if (args.includes('--anton-skip-battle')) {
+    // Remove our custom flag before passing to Claude
+    const claudeArgs = args.filter(arg => arg !== '--anton-skip-battle');
+    const ptyProcess = spawnClaudeInPTY(claudeArgs);
 
-  // 2. Set up continuous data handler that we'll control
-  let outputBuffer = '';
-  let shouldDisplay = true;
-  let bufferedData = '';
+    // Display banner as it comes, stop when we hit the separator
+    let outputBuffer = '';
+    let writtenLength = 0;
+    let promptData = '';
+    let foundSeparator = false;
 
-  const dataHandler = ptyProcess.onData((data) => {
-    if (shouldDisplay) {
-      process.stdout.write(data);
+    const dataHandler = ptyProcess.onData((data) => {
       outputBuffer += data;
-    } else {
-      // Buffer data during battle
-      bufferedData += data;
-    }
-  });
 
-  // Wait for banner and prompt
-  const showBannerUntilPrompt = new Promise((resolve) => {
-    const checkPrompt = () => {
-      // Check for Claude's prompt indicators
-      if (
-        outputBuffer.includes('> ') ||
-        outputBuffer.includes('➜') ||
-        outputBuffer.match(/\n\s*>\s*$/) ||
-        outputBuffer.match(/\n.*?:\s*$/)
-      ) {
-        resolve();
+      if (!foundSeparator) {
+        // Check if we've hit the separator
+        if (outputBuffer.includes('─────────')) {
+          foundSeparator = true;
+
+          // Find where separator starts
+          const lines = outputBuffer.split('\n');
+          const separatorIndex = lines.findIndex(line => line.includes('─────────'));
+
+          if (separatorIndex !== -1) {
+            // Write banner only up to (not including) the separator
+            const bannerLines = lines.slice(0, separatorIndex);
+            const banner = bannerLines.join('\n');
+
+            // Write only what we haven't written yet
+            const toWrite = banner.substring(writtenLength);
+            if (toWrite) {
+              process.stdout.write(toWrite + '\n');
+            }
+
+            // Save prompt (separator and after) for later
+            promptData = lines.slice(separatorIndex).join('\n');
+          }
+        } else {
+          // No separator yet, write data as it comes
+          const toWrite = outputBuffer.substring(writtenLength);
+          if (toWrite) {
+            process.stdout.write(toWrite);
+            writtenLength = outputBuffer.length;
+          }
+        }
       }
-    };
+      // If foundSeparator is true, stop writing (buffer prompt silently)
+    });
 
-    // Check periodically
-    const interval = setInterval(checkPrompt, 100);
+    // Wait for Claude banner and prompt
+    const waitForBanner = new Promise((resolve) => {
+      const startTime = Date.now();
+      let lastOutputLength = 0;
+      let stableCount = 0;
 
-    // Fallback timeout
-    setTimeout(() => {
-      clearInterval(interval);
-      resolve();
-    }, 3000);
-  });
+      const checkReady = () => {
+        // Primary: Look for the prompt separator (───────) followed by > prompt
+        if (outputBuffer.includes('─────────') && outputBuffer.includes('>')) {
+          clearInterval(interval);
+          clearTimeout(timeout);
+          resolve();
+          return;
+        }
 
-  await showBannerUntilPrompt;
+        // Fallback: Check if output has stabilized (no new data for 2 checks = 100ms)
+        if (outputBuffer.length === lastOutputLength) {
+          stableCount++;
+          if (stableCount >= 2 && outputBuffer.length > 0) {
+            clearInterval(interval);
+            clearTimeout(timeout);
+            resolve();
+          }
+        } else {
+          stableCount = 0;
+          lastOutputLength = outputBuffer.length;
+        }
+      };
 
-  // 3. Stop displaying, start buffering (for battle sequence)
-  shouldDisplay = false;
-  bufferedData = '';
+      const interval = setInterval(checkReady, 50);
+      const timeout = setTimeout(() => {
+        clearInterval(interval);
+        resolve();
+      }, 5000);
+    });
 
-  // 4. Prepare logo with version info
-  const formattedLogo = prepareLogoWithVersion();
+    await waitForBanner;
+    dataHandler.dispose();
 
-  // 5. Show battle sequence with logo reveal (in Ink)
-  await showBattle(formattedLogo);
+    // Clear screen and show Son of Anton banner
+    console.clear();
+    const formattedLogo = prepareLogoWithVersion();
+    process.stdout.write(chalk.cyan(formattedLogo));
+    process.stdout.write('\n');
 
-  // 6. Battle has ended, Ink has exited
-  // Dispose the data handler now
-  dataHandler.dispose();
+    // Trigger PTY to redraw its prompt at current cursor position
+    ptyProcess.resize(process.stdout.columns, process.stdout.rows);
 
-  // Clear screen
-  console.clear();
+    // Give PTY a moment to process resize and render prompt
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-  // 7. Display the SON OF ANTON logo
-  console.log(chalk.cyan(formattedLogo));
-
-  // 8. Display any buffered data (like the prompt)
-  if (bufferedData) {
-    process.stdout.write(bufferedData);
+    // Now connect to terminal
+    connectPTYToTerminal(ptyProcess);
+    return;
   }
 
-  // 9. Connect PTY to terminal for interactive use
-  connectPTYToTerminal(ptyProcess);
+  // Simplified flow: Battle -> Son of Anton banner -> Claude prompt (no Claude banner)
+  // 1. Start preparing logo in background (async)
+  const logoPromise = Promise.resolve(prepareLogoWithVersion());
+
+  // 2. Show battle sequence immediately
+  const basicLogo = readFileSync(LOGO_FILE, 'utf-8').replace('{VERSION}', 'Son of Anton\n                  Loading...');
+  await showBattle(basicLogo);
+
+  // 3. Wait for logo to be ready
+  const formattedLogo = await logoPromise;
+
+  // 4. Clear screen and display Son of Anton banner
+  console.clear();
+  process.stdout.write(chalk.cyan(formattedLogo));
+  process.stdout.write('\n');
+
+  // 5. Spawn Claude
+  const ptyProcess = spawnClaudeInPTY(args);
+
+  // 6. Suppress Claude banner by buffering output until we see the separator
+  let outputBuffer = '';
+  let foundSeparator = false;
+
+  const suppressHandler = ptyProcess.onData((data) => {
+    outputBuffer += data;
+
+    // Check if we've found the separator (end of banner)
+    if (!foundSeparator && outputBuffer.includes('─────────')) {
+      foundSeparator = true;
+
+      // Extract just the prompt (skip banner and separator)
+      const lines = outputBuffer.split('\n');
+      const separatorIndex = lines.findIndex(line => line.includes('─────────'));
+
+      if (separatorIndex !== -1) {
+        // Skip the separator line itself, only show what comes after
+        const promptLines = lines.slice(separatorIndex + 1);
+        process.stdout.write(promptLines.join('\n'));
+      }
+
+      // Dispose this handler and switch to normal terminal connection
+      suppressHandler.dispose();
+      connectPTYToTerminal(ptyProcess);
+    }
+  });
 }
 
 main().catch((err) => {
