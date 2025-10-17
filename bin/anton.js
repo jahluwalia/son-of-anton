@@ -417,12 +417,13 @@ async function main() {
     if (!foundSeparator && outputBuffer.includes('─────────')) {
       foundSeparator = true;
 
-      // Extract just the separator and prompt (skip the banner)
+      // Extract just the prompt (skip banner and separator)
       const lines = outputBuffer.split('\n');
       const separatorIndex = lines.findIndex(line => line.includes('─────────'));
 
       if (separatorIndex !== -1) {
-        const promptLines = lines.slice(separatorIndex);
+        // Skip the separator line itself, only show what comes after
+        const promptLines = lines.slice(separatorIndex + 1);
         process.stdout.write(promptLines.join('\n'));
       }
 
